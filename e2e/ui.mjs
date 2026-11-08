@@ -1,13 +1,14 @@
 // Браузерная проверка интерфейса (компьютер + телефон) на подставном API.
 // Запуск: npm run test:ui   (нужен Playwright: npm i -D playwright && npx playwright install chromium)
-// В обычный `npm test` не входит, чтобы проект оставался без зависимостей.
+// В обычный `npm test` не входит (лежит вне test/), чтобы проект оставался без зависимостей.
+// Без Playwright или при неполном прогоне завершается с ошибкой — ложного «успеха» нет.
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
 import { spawn } from "node:child_process";
 
 let chromium;
 try { ({ chromium } = await import("playwright")); }
-catch { console.log("SKIP: playwright не встановлено (npm i -D playwright)"); process.exit(0); }
+catch { console.error("ПОМИЛКА: playwright не встановлено — браузерні перевірки НЕ виконано (npm i -D playwright && npx playwright install chromium)"); process.exit(1); }
 
 const img = (i) => `data:image/svg+xml,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="400" height="300"><rect width="400" height="300" fill="#${(i * 1234567 % 0xffffff).toString(16).padStart(6, "0")}"/></svg>`)}`;
 const AUTOS = Array.from({ length: 45 }, (_, i) => ({
@@ -27,8 +28,9 @@ const srv = spawn(process.execPath, ["server.mjs"], { env: { ...process.env, POR
 const base = await new Promise((r) => srv.stdout.on("data", (d) => { const m = String(d).match(/localhost:(\d+)/); if (m) r(`http://127.0.0.1:${m[1]}`); }));
 
 const browser = await chromium.launch();
-let failed = 0;
-const check = async (name, fn) => { try { await fn(); console.log("✔", name); } catch (e) { failed++; console.log("✖", name, "\n ", e.message); } };
+let failed = 0, ran = 0;
+const EXPECTED = 20;
+const check = async (name, fn) => { ran++; try { await fn(); console.log("✔", name); } catch (e) { failed++; console.log("✖", name, "\n ", e.message); } };
 try {
   for (const [label, vp] of [["компʼютер", { width: 1470, height: 900 }], ["телефон", { width: 390, height: 844 }]]) {
     const page = await browser.newPage({ viewport: vp });
@@ -89,4 +91,5 @@ try {
   }
 } finally { await browser.close(); srv.kill(); mock.close(); }
 if (failed) { console.log(`\n${failed} перевірок не пройшло`); process.exit(1); }
-console.log("\nUI: усі перевірки пройдено");
+if (ran !== EXPECTED) { console.log(`\nВиконано ${ran} перевірок замість ${EXPECTED}`); process.exit(1); }
+console.log(`\nUI: усі ${ran} перевірок пройдено`);

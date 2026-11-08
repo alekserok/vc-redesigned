@@ -3,6 +3,6 @@
   "version": "1.0.0",
   "description": "Новий фронтенд каталогу Vin-Car (дизайн у стилі mobile.de). Читає існуючий API, бекенд не змінює.",
   "type": "module",
-  "scripts": { "start": "node server.mjs", "test": "node --test", "test:ui": "node test/ui.e2e.mjs" },
+  "scripts": { "start": "node server.mjs", "test": "node --test", "test:ui": "node e2e/ui.mjs" },
   "engines": { "node": ">=20" }
 }
