@@ -1,0 +1,129 @@
+// Новое «лицо» каталога Vin-Car. Читает их API server-side (токен НЕ уходит в браузер),
+// кэширует список машин и раздаёт фронту чистый JSON без токена. Их сайт не трогаем.
+// Зависимостей нет — только Node built-ins (как my-portal).
+import { createServer } from "node:http";
+import { readFile } from "node:fs/promises";
+import { existsSync } from "node:fs";
+import { join, extname, normalize } from "node:path";
+
+try { process.loadEnvFile(new URL("./.env", import.meta.url)); } catch {}
+
+const PORT = Number(process.env.PORT || 8810);
+const BASE = process.env.VINCAR_BASE || "https://vin-car.com/api/v1";
+const TOKEN = process.env.VINCAR_TOKEN || "";
+const PUBLIC = new URL("./public/", import.meta.url).pathname;
+
+// ── Справочники кодов (из их API _filters) ─────────────────────────────────
+const FUEL = { 1: "Дизель", 2: "Бензин", 3: "Газ", 4: "Гібрид", 8: "Гібрид PHEV", 9: "Гібрид MHEV", 5: "Електро", 6: "Бензин/Газ", 7: "Інше" };
+const TRANS = { 0: "Ручна", 1: "Автомат" };
+const LOC = { 1: "FR", 2: "Medyka", 3: "UA", 4: "BCA", 5: "В дорозі", 6: "Інша", 7: "Milejow", 8: "Alphabet", 9: "LeesPlan", 10: "Auto-1", 11: "VP", 12: "Athlon", 13: "ATC", 14: "ALD", 15: "Arval", 16: "Inter", 17: "Львів", 18: "Київ", 19: "Вінниця", 20: "Дніпро", 21: "Луцьк", 22: "Katowice", 23: "OPENLANE", 24: "Підготовка" };
+
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const round = (n) => Math.round(Number(n) || 0);
+
+async function apiGet(path) {
+  for (let attempt = 0; attempt < 6; attempt++) {
+    try {
+      const res = await fetch(`${BASE}${path}`, {
+        headers: { Authorization: `Bearer ${TOKEN}` },
+        redirect: "follow",
+        signal: AbortSignal.timeout(25000),
+      });
+      if (res.status === 429) {
+        const reset = Number(res.headers.get("x-rate-limit-reset")) || 2 * (attempt + 1);
+        await sleep((reset + 1) * 1000);
+        continue;
+      }
+      if (!res.ok) throw new Error(`API ${res.status}`);
+      return { data: await res.json(), remaining: Number(res.headers.get("x-rate-limit-remaining")), reset: Number(res.headers.get("x-rate-limit-reset")) };
+    } catch (e) {
+      if (attempt >= 5) throw e;
+      await sleep(1500 * (attempt + 1));
+    }
+  }
+  throw new Error("API не ответил");
+}
+
+// Публичная карточка списка — только то, что можно показывать гостю.
+const mapCar = (c) => ({
+  id: c.id,
+  make: c.name,
+  model: c.model,
+  year: c.production_year,
+  price_eur: round(c.selling_price),
+  price_usd: round(Number(c.selling_price) * 1.16),
+  mileage: round(c.mileage),
+  fuel: FUEL[c.fuel] || null,
+  transmission: TRANS[c.transmission] ?? null,
+  location: LOC[c.location] || null,
+  location_code: c.location,
+  plate: c.registration_number || "",
+  image: c.image || null,
+});
+
+// Публичная детальная — БЕЗ paintwork (перефарбовки только для залогированных на их сайте).
+const mapDetail = (c) => ({
+  ...mapCar(c),
+  volume: c.volume,
+  power: c.power,
+  description: c.description || "",
+  images: (c.images || []).slice().sort((a, b) => a.sort - b.sort).map((i) => i.urlAlias),
+});
+
+// ── Кэш списка (чтоб не бить их API на каждого посетителя и не жечь лимит) ──
+let cache = { at: 0, cars: [] };
+const detailCache = new Map();
+const TTL = 10 * 60 * 1000; // 10 минут
+
+async function getCars() {
+  if (Date.now() - cache.at < TTL && cache.cars.length) return cache.cars;
+  const cars = [];
+  let page = 1;
+  while (page <= 50) {
+    const { data, remaining, reset } = await apiGet(`/autos?per-page=30&page=${page}`);
+    for (const it of data.items || []) cars.push(mapCar(it));
+    if (!data?._links?.next?.href) break;
+    page++;
+    if (Number.isFinite(remaining) && remaining <= 1) await sleep(((reset || 2) + 1) * 1000);
+    else await sleep(250);
+  }
+  cache = { at: Date.now(), cars };
+  return cars;
+}
+
+async function getDetail(id) {
+  const hit = detailCache.get(id);
+  if (hit && Date.now() - hit.at < TTL) return hit.car;
+  const { data } = await apiGet(`/autos/${encodeURIComponent(id)}`);
+  const car = mapDetail(data);
+  detailCache.set(id, { at: Date.now(), car });
+  return car;
+}
+
+const MIME = { ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8", ".svg": "image/svg+xml", ".json": "application/json" };
+const json = (res, code, obj) => { res.writeHead(code, { "Content-Type": "application/json; charset=utf-8" }); res.end(JSON.stringify(obj)); };
+
+const server = createServer(async (req, res) => {
+  const url = new URL(req.url, `http://localhost:${PORT}`);
+  const path = url.pathname;
+  try {
+    if (path === "/api/cars") return json(res, 200, { cars: await getCars() });
+    const m = path.match(/^\/api\/cars\/(\d+)$/);
+    if (m) return json(res, 200, { car: await getDetail(m[1]) });
+
+    // статика
+    const rel = path === "/" ? "/index.html" : path;
+    const file = join(PUBLIC, normalize(rel).replace(/^(\.\.[/\\])+/, ""));
+    if (file.startsWith(PUBLIC) && existsSync(file)) {
+      res.writeHead(200, { "Content-Type": MIME[extname(file)] || "application/octet-stream" });
+      return res.end(await readFile(file));
+    }
+    // SPA fallback
+    res.writeHead(200, { "Content-Type": MIME[".html"] });
+    return res.end(await readFile(join(PUBLIC, "index.html")));
+  } catch (e) {
+    return json(res, 500, { error: e.message });
+  }
+});
+
+server.listen(PORT, () => console.log(`vincar-site на http://localhost:${PORT}`));
