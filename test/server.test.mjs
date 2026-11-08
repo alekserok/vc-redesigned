@@ -6,6 +6,7 @@ import { spawn } from "node:child_process";
 
 const AUTOS = [
   { id: 1, name: "Renault", model: "Megane", production_year: 2021, selling_price: "15200", mileage: 184059, fuel: 1, transmission: 1, location: 2, registration_number: "GA683EB", image: "https://img/1.jpg", paintwork: "SECRET-PAINT", volume: "1.5", power: "115", description: "Опис", images: [{ sort: 2, urlAlias: "b.jpg" }, { sort: 1, urlAlias: "a.jpg" }] },
+  { id: '1" onmouseover="alert(1)', name: "Evil", model: "X", production_year: 2020, selling_price: "1", mileage: 1, fuel: 1, transmission: 1, location: 1, registration_number: "", image: null },
   { id: 2, name: "Peugeot", model: "308", production_year: 2019, selling_price: "0", mileage: 1, fuel: 2, transmission: 0, location: 19, registration_number: "", image: null, paintwork: "SECRET-PAINT" },
 ];
 let upstreamDown = false, calls = 0, seenAuth = "";
@@ -44,7 +45,8 @@ test("список: публичные поля, без paintwork, токен т
   assert.ok(!body.includes("SECRET-PAINT"), "paintwork не должен уходить гостю");
   assert.ok(!body.includes("test-token"));
   const { cars } = JSON.parse(body);
-  assert.equal(cars.length, 2);
+  assert.equal(cars.length, 2, "авто с некорректным id отбрасывается");
+  assert.ok(!body.includes("onmouseover"));
   assert.deepEqual([cars[0].make, cars[0].fuel, cars[0].transmission, cars[0].location, cars[0].price_eur, cars[0].price_usd], ["Renault", "Дизель", "Автомат", "Medyka", 15200, 17632]);
   assert.equal(cars[1].transmission, "Ручна");
   assert.equal(seenAuth, "Bearer test-token");
@@ -73,6 +75,13 @@ test("кэш: повторный список не ходит в API; при п�
   const r = await fetch(base + "/api/cars/1");
   assert.equal(r.status, 200, "карточка из кэша при упавшем API");
   upstreamDown = false;
+});
+
+test("404 кэшируется: повторный запрос не идёт в API", async () => {
+  await fetch(base + "/api/cars/777");
+  const n = calls;
+  assert.equal((await fetch(base + "/api/cars/777")).status, 404);
+  assert.equal(calls, n);
 });
 
 test("ошибка API не раскрывает внутренний текст", async () => {

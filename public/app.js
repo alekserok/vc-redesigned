@@ -53,7 +53,7 @@ function filtered() {
 function opt(val, label, sel) { return `<option value="${esc(val)}" ${val === sel ? "selected" : ""}>${esc(label)}</option>`; }
 
 function priceBlock(c, cls) {
-  if (!c.price_eur) return `<div class="${cls.eur}">Ціна за запитом</div>`;
+  if (!c.price_eur) return `<div class="ask ${cls.ask}">Ціна за запитом</div>`;
   return `<div class="${cls.eur}">${eur(c.price_eur)}</div><div class="${cls.usd}">${usd(c.price_usd)}</div>`;
 }
 
@@ -124,7 +124,7 @@ function renderList() {
 }
 
 function card(c) {
-  return `<a class="card" href="#/car/${c.id}">
+  return `<a class="card" href="#/car/${esc(c.id)}">
     <div class="ph">
       ${c.image ? `<img src="${esc(c.image)}" loading="lazy" alt="${esc(c.make)} ${esc(c.model)}">` : `<span class="ph-none">Фото готуються</span>`}
       <span class="ph-badge">📷 фото</span>
@@ -141,7 +141,7 @@ function card(c) {
       </div>
     </div>
     <div class="price">
-      ${priceBlock(c, { eur: "p-eur", usd: "p-usd" })}
+      ${priceBlock(c, { eur: "p-eur", usd: "p-usd", ask: "p-ask" })}
       <div class="p-note">з розмитненням</div>
       <span class="p-cta">Детальніше</span>
     </div>
@@ -189,7 +189,7 @@ async function detail(id) {
             <button class="nav next" type="button" data-step="1" aria-label="Наступне фото">›</button>
             <span class="count" id="galcount">1 / ${imgs.length}</span>` : ""}
           </div>
-          <div class="thumbs">${imgs.slice(0, 12).map((u, i) => `<img class="${i === 0 ? "on" : ""}" src="${esc(u)}" data-i="${i}" loading="lazy" alt="${esc(title)}, фото ${i + 1}">`).join("")}</div>`
+          <div class="thumbs">${imgs.map((u, i) => `<img class="${i === 0 ? "on" : ""}" src="${esc(u)}" data-i="${i}" loading="lazy" alt="${esc(title)}, фото ${i + 1}">`).join("")}</div>`
           : `<div class="main nophoto">Фото готуються</div>`}
         </div>
         <div class="dcard"><h2>Характеристики</h2>
@@ -205,7 +205,7 @@ async function detail(id) {
         </div>
       </div>
       <aside class="aside"><div class="buy">
-        ${priceBlock(c, { eur: "eur", usd: "usd" })}
+        ${priceBlock(c, { eur: "eur", usd: "usd", ask: "b-ask" })}
         <div class="note">Ціна з розмитненням</div>
         <button class="cta" type="button" data-lead>Залишити заявку</button>
         <a class="call" href="tel:${PHONE}">Зателефонувати</a>
@@ -220,6 +220,7 @@ async function detail(id) {
     main.src = imgs[galIdx];
     main.alt = `${title}, фото ${galIdx + 1}`;
     document.querySelectorAll(".thumbs img").forEach((x, k) => x.classList.toggle("on", k === galIdx));
+    document.querySelector(".thumbs img.on")?.scrollIntoView({ block: "nearest", inline: "nearest" });
     const cnt = document.getElementById("galcount");
     if (cnt) cnt.textContent = `${galIdx + 1} / ${imgs.length}`;
   };
@@ -232,7 +233,9 @@ async function detail(id) {
 
 // ── Заявка: своего сервера заявок у Vin-Car нет, поэтому заявка = звонок или Viber
 //    с готовым текстом про конкретное авто. Ничего никуда не отправляем сами.
+let leadOpener = null;
 function openLead(c) {
+  leadOpener = document.activeElement;
   const what = `${c.make} ${c.model} ${c.year}${c.plate ? ", " + c.plate : ""}`;
   const text = `Добрий день! Цікавить авто ${what} (${location.href})`;
   modal.innerHTML = `<div class="sheet" role="dialog" aria-modal="true" aria-labelledby="lead-h">
@@ -248,7 +251,12 @@ function openLead(c) {
   document.body.classList.add("noscroll");
   modal.querySelector("[data-close]").focus();
 }
-function closeLead() { modal.hidden = true; modal.innerHTML = ""; document.body.classList.remove("noscroll"); }
+function closeLead() {
+  if (modal.hidden) return;
+  modal.hidden = true; modal.innerHTML = ""; document.body.classList.remove("noscroll");
+  if (leadOpener && document.contains(leadOpener)) leadOpener.focus();
+  leadOpener = null;
+}
 
 // ── Информационные страницы ──
 function page(kind) {
@@ -306,7 +314,10 @@ document.addEventListener("click", async (e) => {
     t.setAttribute("aria-expanded", String(open));
   } else if (t.hasAttribute("data-more")) { shown += PAGE; renderList(); }
   else if (t.hasAttribute("data-reset")) { F = { ...EMPTY_F }; shown = PAGE; catalog(); }
-  else if (t.hasAttribute("data-retry")) { view.innerHTML = `<div class="empty">Завантаження…</div>`; await loadCars(); route(); }
+  else if (t.hasAttribute("data-retry")) {
+    if (/^#\/car\//.test(location.hash)) return route();
+    view.innerHTML = `<div class="empty">Завантаження…</div>`; await loadCars(); route();
+  }
   else if (t.hasAttribute("data-lead") && detail.car) openLead(detail.car);
   else if (t.hasAttribute("data-close")) closeLead();
   else if (t.hasAttribute("data-copy")) {
@@ -316,6 +327,12 @@ document.addEventListener("click", async (e) => {
 });
 document.addEventListener("keydown", (e) => {
   if (e.key === "Escape" && !modal.hidden) return closeLead();
+  if (e.key === "Tab" && !modal.hidden) { // фокус не уходит из окна заявки
+    const f = [...modal.querySelectorAll("a,button")];
+    if (e.shiftKey && document.activeElement === f[0]) { e.preventDefault(); f.at(-1).focus(); }
+    else if (!e.shiftKey && document.activeElement === f.at(-1)) { e.preventDefault(); f[0].focus(); }
+    return;
+  }
   if (!modal.hidden || !detail.show || /INPUT|SELECT|TEXTAREA/.test(document.activeElement?.tagName || "")) return;
   if (e.key === "ArrowLeft") detail.show(galIdx - 1);
   if (e.key === "ArrowRight") detail.show(galIdx + 1);

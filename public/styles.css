@@ -76,7 +76,7 @@ img{max-width:100%}
 
 /* ── доробка 08.11: стани, сторінки, заявка, мобільна шапка ── */
 html{overflow-x:hidden}
-button{font:inherit;cursor:pointer}
+.retry,.more,.linkbtn,.burger,.gal .nav,.buy .cta,.sheet button{font-family:inherit;cursor:pointer}
 .top .phone{color:#fff}.top .phone:hover{color:var(--amber)}
 .top nav a.on{color:#fff;box-shadow:inset 0 -2px 0 var(--amber)}
 .top nav a{padding:6px 0}
@@ -88,12 +88,12 @@ button{font:inherit;cursor:pointer}
 .ph-none{position:absolute;inset:0;display:grid;place-items:center;color:var(--soft);font-weight:700;font-size:14px}
 .empty a,.linkbtn{color:var(--navy);font-weight:700;text-decoration:underline;background:0;border:0;padding:0;font-size:inherit}
 .err{background:var(--panel);border:1px solid var(--line);border-radius:14px;font-weight:600}
-.retry{margin-top:14px;background:var(--amber);color:#3a2600;font-weight:700;border:0;border-radius:10px;padding:12px 22px}
+.retry{font-size:15px;margin-top:14px;background:var(--amber);color:#3a2600;font-weight:700;border:0;border-radius:10px;padding:12px 22px}
 .retry:hover{background:var(--amber-d)}
 .err-call{margin-top:12px;font-size:14px}
 .more{align-self:center;background:var(--panel);border:1px solid var(--line);color:var(--navy);font-weight:700;font-size:15px;padding:14px 28px;border-radius:11px;margin-top:4px}
 .more:hover{border-color:var(--navy)}
-.crumb{display:inline-block}
+.crumb{display:block;width:max-content}
 .gal .main{position:relative}
 .gal .nav{position:absolute;top:50%;transform:translateY(-50%);width:44px;height:44px;border-radius:50%;border:0;background:rgba(15,27,45,.62);color:#fff;font-size:28px;line-height:1;display:grid;place-items:center}
 .gal .nav:hover{background:rgba(15,27,45,.85)}
@@ -102,6 +102,8 @@ button{font:inherit;cursor:pointer}
 .gal .nophoto{display:grid;place-items:center;color:#9fb0c4;font-weight:700}
 .desc{font-size:15px;font-weight:600;line-height:1.6;white-space:pre-line;color:var(--ink)}
 .buy .cta{width:100%;border:0}
+.ask{font-weight:800;color:var(--navy);line-height:1.25}.p-ask{font-size:17px;text-align:right}.b-ask{font-size:24px;margin-bottom:2px}
+@media(max-width:900px){.p-ask{text-align:left}}
 .page{margin-top:0}.page h1{font-size:28px;font-weight:800;margin-bottom:14px}
 .page p{font-size:16px;font-weight:500;line-height:1.6;color:#2a3a4d;margin-bottom:12px}
 .page .trust{margin:6px 0 16px}

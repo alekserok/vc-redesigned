@@ -47,7 +47,7 @@ async function apiGet(path) {
 
 // Публичная карточка списка — только то, что можно показывать гостю.
 const mapCar = (c) => ({
-  id: c.id,
+  id: Number(c.id),
   make: c.name,
   model: c.model,
   year: c.production_year,
@@ -75,17 +75,19 @@ const mapDetail = (c) => ({
 let cache = { at: 0, cars: [] };
 const detailCache = new Map();
 const TTL = 10 * 60 * 1000; // 10 минут
+const missing = new Map(); // id → время ответа 404, чтобы перебор id не тратил их лимит
+const MISS_TTL = 60 * 1000;
 
 let inflight = null; // одновременные посетители ждут один и тот же запрос к API
 
 async function getCars() {
   if (Date.now() - cache.at < TTL && cache.cars.length) return cache.cars;
   if (!inflight) inflight = fetchCars().finally(() => { inflight = null; });
-  try { return await inflight; }
-  catch (e) {
-    if (cache.cars.length) { console.error("API недоступен, отдаю кэш:", e.message); return cache.cars; }
-    throw e;
+  if (cache.cars.length) { // посетитель не ждёт: отдаём прежний список, новый подтянется в фоне
+    inflight.catch((e) => console.error("API недоступен, отдаю кэш:", e.message));
+    return cache.cars;
   }
+  return inflight;
 }
 
 async function fetchCars() {
@@ -93,7 +95,7 @@ async function fetchCars() {
   let page = 1;
   while (page <= 50) {
     const { data, remaining, reset } = await apiGet(`/autos?per-page=30&page=${page}`);
-    for (const it of data.items || []) cars.push(mapCar(it));
+    for (const it of data.items || []) if (Number.isSafeInteger(Number(it.id)) && Number(it.id) > 0) cars.push(mapCar(it));
     if (!data?._links?.next?.href) break;
     page++;
     if (Number.isFinite(remaining) && remaining <= 1) await sleep(((reset || 2) + 1) * 1000);
@@ -106,10 +108,17 @@ async function fetchCars() {
 async function getDetail(id) {
   const hit = detailCache.get(id);
   if (hit && Date.now() - hit.at < TTL) return hit.car;
+  const miss = missing.get(id);
+  if (miss && Date.now() - miss < MISS_TTL) { const e = new Error("not_found"); e.status = 404; throw e; }
   let data;
   try { ({ data } = await apiGet(`/autos/${encodeURIComponent(id)}`)); }
-  catch (e) { if (hit && e.status !== 404) return hit.car; throw e; }
+  catch (e) {
+    if (e.status === 404) { if (missing.size > 2000) missing.clear(); missing.set(id, Date.now()); }
+    if (hit && e.status !== 404) return hit.car;
+    throw e;
+  }
   const car = mapDetail(data);
+  if (!Number.isSafeInteger(car.id) || car.id <= 0) { const e = new Error("bad_id"); e.status = 404; throw e; }
   if (detailCache.size > 500) detailCache.delete(detailCache.keys().next().value);
   detailCache.set(id, { at: Date.now(), car });
   return car;
