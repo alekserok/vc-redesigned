@@ -3,6 +3,7 @@ import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
 import { spawn } from "node:child_process";
+import { connect } from "node:net";
 
 const AUTOS = [
   { id: 1, name: "Renault", model: "Megane", production_year: 2021, selling_price: "15200", mileage: 184059, fuel: 1, transmission: 1, location: 2, registration_number: "GA683EB", image: "https://img/1.jpg", paintwork: "SECRET-PAINT", volume: "1.5", power: "115", description: "Опис", images: [{ sort: 2, urlAlias: "b.jpg" }, { sort: 1, urlAlias: "a.jpg" }] },
@@ -119,3 +120,13 @@ test("заголовки безопасности на HTML, статике, API
     assert.ok(r.headers.get("referrer-policy"), p);
   }
 }, { timeout: 60000 });
+
+test("кривий адрес запиту не кладе сервер", async () => {
+  const port = new URL(base).port;
+  const reply = await new Promise((resolve) => {
+    const sock = connect(Number(port), "127.0.0.1", () => sock.write("GET http://[ HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n"));
+    let buf = ""; sock.on("data", (d) => (buf += d)); sock.on("close", () => resolve(buf)); sock.on("error", () => resolve(buf));
+  });
+  assert.match(reply, /^HTTP\/1\.1 400/);
+  assert.equal((await fetch(base + "/")).status, 200);
+});

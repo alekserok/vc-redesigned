@@ -141,8 +141,9 @@ const head = (res, code, type) => res.writeHead(code, { ...SECURITY, "Content-Ty
 const json = (res, code, obj) => { head(res, code, "application/json; charset=utf-8"); res.end(JSON.stringify(obj)); };
 
 const server = createServer(async (req, res) => {
-  const url = new URL(req.url, `http://localhost:${PORT}`);
-  const path = url.pathname;
+  let path;
+  try { path = new URL(req.url, "http://localhost").pathname; }
+  catch { return json(res, 400, { error: "bad_request" }); }   // кривой адрес не роняет сервер
   try {
     if (path === "/api/cars") return json(res, 200, { cars: await getCars() });
     const m = path.match(/^\/api\/cars\/(\d+)$/);

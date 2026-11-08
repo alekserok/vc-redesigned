@@ -35,6 +35,7 @@ try {
   for (const [label, vp] of [["компʼютер", { width: 1470, height: 900 }], ["телефон", { width: 390, height: 844 }]]) {
     const page = await browser.newPage({ viewport: vp });
     const errors = []; page.on("pageerror", (e) => errors.push(e.message));
+    page.on("console", (m) => { if (m.type() === "error" && /Content Security Policy|Refused to/i.test(m.text())) errors.push("CSP: " + m.text()); });
     await page.goto(base + "/"); await page.waitForSelector(".card");
 
     await check(`${label}: без прокрутки вбік`, async () => {
