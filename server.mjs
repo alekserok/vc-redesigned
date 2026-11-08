@@ -125,7 +125,20 @@ async function getDetail(id) {
 }
 
 const MIME = { ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8", ".svg": "image/svg+xml", ".json": "application/json" };
-const json = (res, code, obj) => { res.writeHead(code, { "Content-Type": "application/json; charset=utf-8" }); res.end(JSON.stringify(obj)); };
+// заголовки безопасности на каждый ответ
+const SECURITY = {
+  "X-Content-Type-Options": "nosniff",
+  "X-Frame-Options": "DENY",
+  "Referrer-Policy": "strict-origin-when-cross-origin",
+  "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+  "Content-Security-Policy": [
+    "default-src 'self'", "script-src 'self'", "style-src 'self' https://fonts.googleapis.com",
+    "font-src https://fonts.gstatic.com", "img-src 'self' https: data:", "connect-src 'self'",
+    "object-src 'none'", "base-uri 'self'", "form-action 'self'", "frame-ancestors 'none'",
+  ].join("; "),
+};
+const head = (res, code, type) => res.writeHead(code, { ...SECURITY, "Content-Type": type });
+const json = (res, code, obj) => { head(res, code, "application/json; charset=utf-8"); res.end(JSON.stringify(obj)); };
 
 const server = createServer(async (req, res) => {
   const url = new URL(req.url, `http://localhost:${PORT}`);
@@ -141,11 +154,11 @@ const server = createServer(async (req, res) => {
     const file = join(PUBLIC, normalize(rel).replace(/^(\.\.[/\\])+/, ""));
     const isFile = (() => { try { return statSync(file).isFile(); } catch { return false; } })();
     if (file.startsWith(PUBLIC) && isFile) {
-      res.writeHead(200, { "Content-Type": MIME[extname(file)] || "application/octet-stream" });
+      head(res, 200, MIME[extname(file)] || "application/octet-stream");
       return res.end(await readFile(file));
     }
     // SPA fallback
-    res.writeHead(200, { "Content-Type": MIME[".html"] });
+    head(res, 200, MIME[".html"]);
     return res.end(await readFile(join(PUBLIC, "index.html")));
   } catch (e) {
     if (e.status === 404) return json(res, 404, { error: "not_found" });

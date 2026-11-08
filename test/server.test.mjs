@@ -102,3 +102,15 @@ test("статика и SPA-fallback, без выхода за public/", async (
   const trav = await fetch(base + "/..%2f..%2fserver.mjs");
   assert.ok(!(await trav.text()).includes("VINCAR_TOKEN"));
 });
+
+test("заголовки безопасности на HTML, статике, API и ошибках", async () => {
+  for (const p of ["/", "/styles.css", "/api/cars", "/api/nope"]) {
+    const r = await fetch(base + p);
+    await r.arrayBuffer();
+    assert.equal(r.headers.get("x-content-type-options"), "nosniff", p);
+    assert.equal(r.headers.get("x-frame-options"), "DENY", p);
+    assert.match(r.headers.get("content-security-policy") || "", /frame-ancestors 'none'/, p);
+    assert.match(r.headers.get("content-security-policy") || "", /script-src 'self'/, p);
+    assert.ok(r.headers.get("referrer-policy"), p);
+  }
+});
