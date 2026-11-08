@@ -104,13 +104,18 @@ test("статика и SPA-fallback, без выхода за public/", async (
 });
 
 test("заголовки безопасности на HTML, статике, API и ошибках", async () => {
-  for (const p of ["/", "/styles.css", "/api/cars", "/api/nope"]) {
+  const cases = ["/", "/styles.css", "/app.js", "/api/cars", "/api/cars/1", "/api/nope", "/no/such/page", "502:/api/cars/3"];
+  for (const c of cases) {
+    const down = c.startsWith("502:"), p = down ? c.slice(4) : c;
+    upstreamDown = down;
     const r = await fetch(base + p);
+    upstreamDown = false;
     await r.arrayBuffer();
+    if (down) assert.equal(r.status, 502, p);
     assert.equal(r.headers.get("x-content-type-options"), "nosniff", p);
     assert.equal(r.headers.get("x-frame-options"), "DENY", p);
     assert.match(r.headers.get("content-security-policy") || "", /frame-ancestors 'none'/, p);
     assert.match(r.headers.get("content-security-policy") || "", /script-src 'self'/, p);
     assert.ok(r.headers.get("referrer-policy"), p);
   }
-});
+}, { timeout: 60000 });
