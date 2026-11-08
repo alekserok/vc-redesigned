@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Vin-Car — авто з Європи</title>
+<meta name="description" content="Аукціонні авто з Європи з прозорою історією та розмитненням. Каталог Vin-Car.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -11,15 +12,17 @@
 </head>
 <body>
 <header class="top"><div class="wrap">
-  <div class="logo" onclick="location.hash=''">VIN<b>CAR</b></div>
-  <nav><a onclick="location.hash=''">Каталог</a><a>Доставка</a><a>Про нас</a><a>Контакти</a></nav>
+  <a class="logo" href="#/">VIN<b>CAR</b></a>
+  <button class="burger" id="burger" aria-label="Меню" aria-expanded="false" aria-controls="mainnav"><span></span><span></span><span></span></button>
+  <nav id="mainnav"><a href="#/" data-nav="">Каталог</a><a href="#/delivery" data-nav="delivery">Доставка</a><a href="#/about" data-nav="about">Про нас</a><a href="#/contacts" data-nav="contacts">Контакти</a></nav>
   <div class="sp"></div>
-  <div class="phone">+380 67 30 16 400<small>Владислав · Вінниця</small></div>
+  <a class="phone" href="tel:+380673016400">+380 67 30 16 400<small>Владислав · Вінниця</small></a>
 </div></header>
 
 <div id="view"><div class="empty">Завантаження…</div></div>
 
-<div class="foot">Vin-Car · авто з аукціонів Європи · дизайн VinCarGroup</div>
+<div class="foot">Vin-Car · авто з аукціонів Європи · <a href="tel:+380673016400">+380 67 30 16 400</a> · дизайн VinCarGroup</div>
+<div id="modal" class="modal" hidden></div>
 <script src="/app.js"></script>
 </body>
 </html>

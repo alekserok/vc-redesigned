@@ -3,7 +3,7 @@
 // Зависимостей нет — только Node built-ins (как my-portal).
 import { createServer } from "node:http";
 import { readFile } from "node:fs/promises";
-import { existsSync } from "node:fs";
+import { statSync } from "node:fs";
 import { join, extname, normalize } from "node:path";
 
 try { process.loadEnvFile(new URL("./.env", import.meta.url)); } catch {}
@@ -34,10 +34,11 @@ async function apiGet(path) {
         await sleep((reset + 1) * 1000);
         continue;
       }
+      if (res.status === 404) { const e = new Error("not_found"); e.status = 404; throw e; }
       if (!res.ok) throw new Error(`API ${res.status}`);
       return { data: await res.json(), remaining: Number(res.headers.get("x-rate-limit-remaining")), reset: Number(res.headers.get("x-rate-limit-reset")) };
     } catch (e) {
-      if (attempt >= 5) throw e;
+      if (e.status === 404 || attempt >= 2) throw e; // сетевые сбои: 3 попытки, чтобы гость не ждал полминуты
       await sleep(1500 * (attempt + 1));
     }
   }
@@ -75,8 +76,19 @@ let cache = { at: 0, cars: [] };
 const detailCache = new Map();
 const TTL = 10 * 60 * 1000; // 10 минут
 
+let inflight = null; // одновременные посетители ждут один и тот же запрос к API
+
 async function getCars() {
   if (Date.now() - cache.at < TTL && cache.cars.length) return cache.cars;
+  if (!inflight) inflight = fetchCars().finally(() => { inflight = null; });
+  try { return await inflight; }
+  catch (e) {
+    if (cache.cars.length) { console.error("API недоступен, отдаю кэш:", e.message); return cache.cars; }
+    throw e;
+  }
+}
+
+async function fetchCars() {
   const cars = [];
   let page = 1;
   while (page <= 50) {
@@ -94,8 +106,11 @@ async function getCars() {
 async function getDetail(id) {
   const hit = detailCache.get(id);
   if (hit && Date.now() - hit.at < TTL) return hit.car;
-  const { data } = await apiGet(`/autos/${encodeURIComponent(id)}`);
+  let data;
+  try { ({ data } = await apiGet(`/autos/${encodeURIComponent(id)}`)); }
+  catch (e) { if (hit && e.status !== 404) return hit.car; throw e; }
   const car = mapDetail(data);
+  if (detailCache.size > 500) detailCache.delete(detailCache.keys().next().value);
   detailCache.set(id, { at: Date.now(), car });
   return car;
 }
@@ -110,11 +125,13 @@ const server = createServer(async (req, res) => {
     if (path === "/api/cars") return json(res, 200, { cars: await getCars() });
     const m = path.match(/^\/api\/cars\/(\d+)$/);
     if (m) return json(res, 200, { car: await getDetail(m[1]) });
+    if (path.startsWith("/api/")) return json(res, 404, { error: "not_found" });
 
     // статика
     const rel = path === "/" ? "/index.html" : path;
     const file = join(PUBLIC, normalize(rel).replace(/^(\.\.[/\\])+/, ""));
-    if (file.startsWith(PUBLIC) && existsSync(file)) {
+    const isFile = (() => { try { return statSync(file).isFile(); } catch { return false; } })();
+    if (file.startsWith(PUBLIC) && isFile) {
       res.writeHead(200, { "Content-Type": MIME[extname(file)] || "application/octet-stream" });
       return res.end(await readFile(file));
     }
@@ -122,8 +139,12 @@ const server = createServer(async (req, res) => {
     res.writeHead(200, { "Content-Type": MIME[".html"] });
     return res.end(await readFile(join(PUBLIC, "index.html")));
   } catch (e) {
-    return json(res, 500, { error: e.message });
+    if (e.status === 404) return json(res, 404, { error: "not_found" });
+    console.error(path, e.message);
+    // наружу не отдаём текст ошибки их API — только общий статус
+    return json(res, 502, { error: "upstream_unavailable" });
   }
 });
 
-server.listen(PORT, () => console.log(`vincar-site на http://localhost:${PORT}`));
+if (!TOKEN) console.warn("VINCAR_TOKEN не задан — каталог не загрузится (см. .env.example)");
+server.listen(PORT, () => console.log(`vincar-site на http://localhost:${server.address().port}`));
